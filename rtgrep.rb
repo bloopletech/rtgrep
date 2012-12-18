@@ -7,6 +7,10 @@ require 'rbcurse'
 require 'rbcurse/core/util/app'
 
 
+$datacolor = $normalcolor = $def_fg_color = 238
+$def_bg_color = 16
+
+
 class Searcher
   def initialize(haystack)
     @haystack = haystack
@@ -39,14 +43,84 @@ class Searcher
 end
 
 class SearcherList < RubyCurses::List
-  def convert_value_to_text(value, row)
-    value.join(" ")
+  def convert_value_to_text(value, crow)
+    value
   end
+
+  def highlight_focussed_row type, r=nil, c=nil, acolor=nil
+    return unless @should_show_focus
+    case type
+    when :FOCUSSED
+      ix = @current_index
+      return if is_row_selected ix
+      r = _convert_index_to_printable_row() unless r
+      focussed = true
+
+    when :UNFOCUSSED
+      return if @oldrow.nil? || @oldrow == @current_index
+      ix = @oldrow
+      return if is_row_selected ix
+      r = _convert_index_to_printable_row(@oldrow) unless r
+      return unless r # row is not longer visible
+      focussed = false
+    end
+    unless c
+      _r, c = rowcol
+    end
+
+    @cell_renderer.repaint(@graphic, r, c, ix, list()[ix], focussed, false)
+  end
+     
+
+=begin
+  def highlight_selected_row r=nil, c=nil, acolor=nil
+    return unless @selected_index # no selection
+    r = _convert_index_to_printable_row(@selected_index) unless r
+    return unless r # not on screen
+    unless c
+      _r, c = rowcol
+    end
+    STDERR.puts "r: #{r}, c: #{c}"
+    @cell_renderer.repaint(@graphic, r, c, @selected_index, list()[@selected_index], false, true)
+  end
+  def unhighlight_row index,  r=nil, c=nil, acolor=nil
+    return unless index # no selection
+    r = _convert_index_to_printable_row(index) unless r
+    return unless r # not on screen
+    unless c
+      _r, c = rowcol
+    end
+    @cell_renderer.repaint(@graphic, r, c, index, list()[index], false, false)
+  end
+=end
 end
 
-$datacolor = $normalcolor = $def_fg_color = 238
-$def_bg_color = 16
+class SearcherListCellRenderer < RubyCurses::ListCellRenderer
+  def repaint graphic, r=@row,c=@col, row_index=-1,value=@text, focussed=false, selected=false
+    if focussed
+      offset = 236
+      attr_offset = Ncurses::A_NORMAL
+    else
+      offset = 0
+      attr_offset = Ncurses::A_NORMAL
+    end
 
+    blank = Chunks::Chunk.new(ColorMap.get_color(252, offset), ' ', attr_offset)
+
+    chunks = Chunks::ChunkLine.new
+    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD)
+    chunks << blank
+    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)
+    chunks << blank
+    chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
+    chunks << blank
+    chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
+    
+  
+    graphic.wmove r, c
+    graphic.show_colored_chunks chunks, ColorMap.get_color(238), nil
+  end
+end
 
 App.new do
   selected_tag = [""]
@@ -63,6 +137,7 @@ App.new do
     results_box = SearcherList.new(nil, :list => searcher.all, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
     results_box.instance_variable_set("@display_length", 9001)
+    results_box.cell_renderer(SearcherListCellRenderer.new)
     results_box.bind(:PRESS) do
       selected_tag = results_box.current_value
       throw(:close)
@@ -76,6 +151,16 @@ App.new do
       selected_tag = results_box.current_value
       throw(:close)
     end
+    search_box.bind_key(2727) do
+      selected_tag = nil
+      throw(:close)
+    end
+    results_box.bind(2727) do
+      selected_tag = nil
+      search_box.focus
+      search_box.cursor_end
+    end
+
     search_box.focus
     search_box.cursor_home
   end
