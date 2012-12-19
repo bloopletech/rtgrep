@@ -1,23 +1,23 @@
 #!/usr/bin/env ruby
 
-$datacolor = $normalcolor = $def_fg_color = 238
-$def_bg_color = 16
-
 require 'rbcurse'
 require 'rbcurse/core/util/app'
 
 
 $datacolor = $normalcolor = $def_fg_color = 238
 $def_bg_color = 16
+$log = Logger.new("/dev/null")
 
 
 class Searcher
-  def initialize(haystack)
+  def initialize(haystack, restrict_to_path = nil)
     @haystack = haystack
+    @restrict_to_path = restrict_to_path
+    @haystack.select! { |line| line[2] == @restrict_to_path } if @restrict_to_path
   end
 
-  def self.from_ctagsxy(lines)
-    Searcher.new(lines.map { |l| l.split("\t") })
+  def self.parse_ctagsxy(lines)
+    lines.map { |l| l.split("\t") }
   end
 
   def search(needle)
@@ -114,12 +114,13 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
     chunks = Chunks::ChunkLine.new
     chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD)
     chunks << blank
-    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)
-    chunks << blank
+#    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)
+#    chunks << blank
     chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
     chunks << blank
     chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
-    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * (@display_length - chunks.length), attr_offset)
+    fill_length = (@display_length - chunks.length) 
+    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * fill_length, attr_offset) if fill_length > 0
     
   
     graphic.wmove r, c
@@ -136,7 +137,8 @@ App.new do
 
   @default_prefix = " "
 
-  searcher = Searcher.from_ctagsxy(File.readlines(ARGV.first).map { |s| s.chomp })
+  lines = Searcher.parse_ctagsxy(File.readlines(ARGV.first).map { |s| s.chomp })
+  searcher = Searcher.new(lines, ARGV.length > 1 ? ARGV[1] : nil)
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
     $key_map = :neither
