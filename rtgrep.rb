@@ -21,7 +21,11 @@ class Searcher
   end
 
   def search(needle)
-    needle_regex = Regexp.new(needle.split("").map { |c| "#{c}[^#{c}]*?" }.join, "i")
+    needle_parts = needle.split("").map do |c|
+      c = Regexp.escape(c)
+      "#{c}[^#{c}]*?"
+    end.join
+    needle_regex = Regexp.new(needle_parts, "i")
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
     @haystack.select { |line| line[0] =~ needle_regex }.sort_by do |line|
       shortest_match = nil
@@ -115,6 +119,7 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
     chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
     chunks << blank
     chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
+    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * (@display_length - chunks.length), attr_offset)
     
   
     graphic.wmove r, c
@@ -134,10 +139,11 @@ App.new do
   searcher = Searcher.from_ctagsxy(File.readlines(ARGV.first).map { |s| s.chomp })
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
+    $key_map = :neither
     results_box = SearcherList.new(nil, :list => searcher.all, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
     results_box.instance_variable_set("@display_length", 9001)
-    results_box.cell_renderer(SearcherListCellRenderer.new)
+    results_box.cell_renderer(SearcherListCellRenderer.new(:display_length => results_box.width))
     results_box.bind(:PRESS) do
       selected_tag = results_box.current_value
       throw(:close)
@@ -145,7 +151,7 @@ App.new do
     label :text => " ", :width => :expand, :height => 1
     search_box = field :label => "Search >"
     search_box.bind(:CHANGE) do
-      results_box.list(searcher.search(search_box.getvalue))
+      results_box.list(searcher.search(search_box.getvalue)) if search_box.getvalue.length >= 3
     end
     search_box.bind_key(13) do
       selected_tag = results_box.current_value
