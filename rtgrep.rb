@@ -10,14 +10,14 @@ $log = Logger.new("/dev/null")
 
 
 class Searcher
-  def initialize(haystack, restrict_to_path = nil)
+  def initialize(haystack)
     @haystack = haystack
-    @restrict_to_path = restrict_to_path
-    @haystack.select! { |line| line[2] == @restrict_to_path } if @restrict_to_path
   end
 
-  def self.parse_ctagsxy(lines)
-    lines.map { |l| l.split("\t") }
+  def self.parse_ctagsx(lines)
+    lines.map do |l|
+      l.split(/ +/, 4).map { |f| f.strip }
+    end
   end
 
   def search(needle)
@@ -114,11 +114,11 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
     chunks = Chunks::ChunkLine.new
     chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD)
     chunks << blank
-#    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)
+#    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[3], attr_offset)
 #    chunks << blank
     chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
     chunks << blank
-    chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
+    chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[1], attr_offset)
     fill_length = (@display_length - chunks.length) 
     chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * fill_length, attr_offset) if fill_length > 0
     
@@ -128,17 +128,18 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
   end
 end
 
+
 App.new do
   selected_tag = [""]
 
   at_exit do
-    STDERR.print "#{selected_tag[2]}\n#{selected_tag[3]}\n#{selected_tag[1]}\n#{selected_tag[0]}\n" if selected_tag
+    STDERR.print "#{selected_tag[2]}\n#{selected_tag[1]}\n#{selected_tag[3]}\n#{selected_tag[0]}\n" if selected_tag
   end
 
   @default_prefix = " "
 
-  lines = Searcher.parse_ctagsxy(File.readlines(ARGV.first).map { |s| s.chomp })
-  searcher = Searcher.new(lines, ARGV.length > 1 ? ARGV[1] : nil)
+  lines = Searcher.parse_ctagsx(File.readlines(ARGV.first).map { |s| s.chomp })
+  searcher = Searcher.new(lines)
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
     $key_map = :neither
