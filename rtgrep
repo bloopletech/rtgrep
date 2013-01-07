@@ -6,7 +6,6 @@ $datacolor = $normalcolor = $def_fg_color = 238
 $def_bg_color = 16
 $log = Logger.new("/dev/null")
 
-
 class Searcher
   def initialize(haystack)
     @haystack = haystack
@@ -19,6 +18,8 @@ class Searcher
     end
     regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
     lines.each do |l|
+      l[0].gsub!("\x00", " ")
+      l[0].replace l[0][0..100]
       l[3].slice!(regex)
     end
     lines
