@@ -160,7 +160,6 @@ class SearcherField < RubyCurses::Field
   end
 
   def handle_key(ch)
-    $log.debug "ZZZZZZZZZZZZZZZZZZZ #{ch.inspect}"
     if ((32..126).to_a + @key_handler.keys + [13]).include?(ch)
       super
     else
