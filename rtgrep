@@ -180,7 +180,7 @@ App.new do
 
   @default_prefix = " "
 
-  lines = Searcher.parse_ctagsx(ARGF.readlines.map { |s| s.chomp })
+  lines = Searcher.parse_ctagsx(ARGF.readlines.map { |s| s.chomp }.select { |s| s != "" })
   searcher = Searcher.new(lines)
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
