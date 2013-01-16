@@ -6,6 +6,9 @@ $datacolor = $normalcolor = $def_fg_color = 238
 $def_bg_color = 16
 $log = Logger.new("/dev/null")
 
+MAP_KIND = ENV["RTGREP_MAP_KIND"]
+require File.dirname(__FILE__) + "/map_kind.rb" if MAP_KIND
+
 class Searcher
   def initialize(haystack)
     @haystack = haystack
@@ -22,10 +25,13 @@ class Searcher
       l[0].replace l[0][0..100]
       l[3].slice!(regex)
     end
+    lines.each { |l| l[1] = KINDS_MAP[l[1]] } if MAP_KIND
     lines
   end
 
-  def search(needle)
+  def search(needle = nil)
+    return @haystack if !needle || needle.gsub(' ', '') == ''
+
     needle_parts = needle.split("").map do |c|
       c = Regexp.escape(c)
       "#{c}[^#{c}]*?"
@@ -44,10 +50,6 @@ class Searcher
 
       ((shortest_match[0]) * 1.0) + ((shortest_match[1] - shortest_match[0]) * 0.5) + ((line[0].length) * 0.3)
     end
-  end
-
-  def all
-    @haystack
   end
 end
 
@@ -79,7 +81,6 @@ class SearcherList < RubyCurses::List
 
     @cell_renderer.repaint(@graphic, r, c, ix, list()[ix], focussed, false)
   end
-     
 
 =begin
   def highlight_selected_row r=nil, c=nil, acolor=nil
@@ -102,6 +103,25 @@ class SearcherList < RubyCurses::List
     @cell_renderer.repaint(@graphic, r, c, index, list()[index], false, false)
   end
 =end
+
+  def handle_key(ch)
+    case ch
+    when Ncurses::KEY_NPAGE, Ncurses::KEY_PPAGE
+      if ch == Ncurses::KEY_NPAGE
+        @toprow += height
+      else
+        @toprow -= height
+      end
+      @toprow = 0 if @toprow < 0 #The opposite case is handled inside bounds_check
+      @oldrow = @current_index
+      @current_index = @toprow
+      bounds_check
+      @repaint_required = true
+      @widget_scrolled = true
+    else
+      super
+    end
+  end
 end
 
 class SearcherListCellRenderer < RubyCurses::ListCellRenderer
@@ -114,30 +134,42 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
       attr_offset = Ncurses::A_NORMAL
     end
 
-    blank = Chunks::Chunk.new(ColorMap.get_color(252, offset), ' ', attr_offset)
+    chunks = [Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD), Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)]
+    chunks.reverse! if MAP_KIND
 
-    chunks = Chunks::ChunkLine.new
-    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD)
-    chunks << blank
-    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)
-    chunks << blank
-#    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), value[3], attr_offset)
-#    chunks << blank
     if value[0] != value[3]
       chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
-      chunks << blank
       if value[2] != "1"
         chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
       end
     end
-    fill_length = (@display_length - chunks.length) 
-    chunks << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * fill_length, attr_offset) if fill_length > 0
-    
-  
+
+    blank = Chunks::Chunk.new(ColorMap.get_color(252, offset), ' ', attr_offset)
+    chunk_line = Chunks::ChunkLine.new(chunks.flat_map { |c| [c, blank] }[0...-1])
+    fill_length = (@display_length - chunk_line.length) 
+    chunk_line << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * fill_length, attr_offset) if fill_length > 0
+
     graphic.wmove r, c
-    graphic.show_colored_chunks chunks, ColorMap.get_color(238), nil
+    graphic.show_colored_chunks chunk_line, ColorMap.get_color(238), nil
   end
 end
+
+class SearcherField < RubyCurses::Field
+  def searcher_list(list)
+    @searcher_list = list
+  end
+
+  def handle_key(ch)
+    $log.debug "ZZZZZZZZZZZZZZZZZZZ #{ch.inspect}"
+    if ((32..126).to_a + @key_handler.keys + [13]).include?(ch)
+      super
+    else
+      @searcher_list.handle_key(ch)
+      focus
+    end
+  end
+end
+
 
 
 App.new do
@@ -149,23 +181,22 @@ App.new do
 
   @default_prefix = " "
 
-  lines = Searcher.parse_ctagsx(File.readlines(ARGV.first).map { |s| s.chomp })
+  lines = Searcher.parse_ctagsx(ARGF.readlines.map { |s| s.chomp })
   searcher = Searcher.new(lines)
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
-    $key_map = :neither
-    results_box = SearcherList.new(nil, :list => searcher.all, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
+    results_box = SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
     results_box.instance_variable_set("@display_length", 9001)
     results_box.cell_renderer(SearcherListCellRenderer.new(:display_length => results_box.width))
-    results_box.bind(:PRESS) do
-      selected_tag = results_box.current_value
-      throw(:close)
-    end
+
     label :text => " ", :width => :expand, :height => 1
-    search_box = field :label => "Search >"
+
+    search_box = SearcherField.new(nil, :label => "Search >", :searcher_list => results_box)
+    _position(search_box)
     search_box.bind(:CHANGE) do
-      results_box.list(searcher.search(search_box.getvalue)) if search_box.getvalue.length >= 3
+      results_box.list(searcher.search(search_box.getvalue))
+      results_box.goto_top
     end
     search_box.bind_key(13) do
       selected_tag = results_box.current_value
@@ -174,11 +205,6 @@ App.new do
     search_box.bind_key(2727) do
       selected_tag = nil
       throw(:close)
-    end
-    results_box.bind(2727) do
-      selected_tag = nil
-      search_box.focus
-      search_box.cursor_end
     end
 
     search_box.focus
