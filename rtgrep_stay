@@ -5,6 +5,11 @@ PATH_HASH="${PATHS[${#PATHS[@]}-1]}"
 unset PATHS[${#PATHS[@]}-1]
 
 if tmux has-session -t "$PATH_HASH" >/dev/null 2>/dev/null; then
+  if [[ "${PATHS[0]}" == "--kill" ]]; then
+    kill $(cat /tmp/rtgrep_${PATH_HASH}_pid)
+    tmux kill-session -t "$PATH_HASH" >/dev/null
+    exit
+  fi
   kill -HUP $(cat /tmp/rtgrep_${PATH_HASH}_pid)
   tmux attach-session -t "$PATH_HASH" >/dev/null
 else
