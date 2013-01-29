@@ -26,7 +26,7 @@ class Searcher
 
   def update
     @haystacks.each_pair do |name, value|
-      current_mtime = File.mtime(name)
+      current_mtime = File.lstat(name).mtime
       if value[:lines].nil? || (current_mtime > value[:mtime])
         value[:lines] = Searcher.parse_ctagsx(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
         value[:mtime] = current_mtime
