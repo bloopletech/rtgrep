@@ -10,23 +10,30 @@ MAP_KIND = ENV["RTGREP_MAP_KIND"]
 require File.dirname(__FILE__) + "/map_kind.rb" if MAP_KIND
 
 class Searcher
-  def initialize(haystack)
-    @haystack = haystack
+  def initialize
+    @haystacks = {}
+    @haystack = []
   end
 
-  def self.parse_ctagsx(lines)
-    lines.map! do |l|
-      l =~ /^(.+?) +([\w ]+?) +(\d+?) +([^ ]+?) +(.*?)$/
-      [$1, $2, $3, $4, $5]
+  def add(file)
+    @haystacks[file] = {} unless @haystacks.key?(file)
+    @haystacks[file].merge!(:mtime => File.mtime(file), :lines => nil)
+  end
+
+  def delete(file)
+    @haystacks.delete(file)
+  end
+
+  def update
+    @haystacks.each_pair do |name, value|
+      current_mtime = File.mtime(name)
+      if value[:lines].nil? || (current_mtime > value[:mtime])
+        value[:lines] = Searcher.parse_ctagsx(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
+        value[:mtime] = current_mtime
+      end
     end
-    regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
-    lines.each do |l|
-      l[0].gsub!("\x00", " ")
-      l[0].replace l[0][0..100]
-      l[3].slice!(regex)
-    end
-    lines.each { |l| l[1] = KINDS_MAP[l[1]] } if MAP_KIND
-    lines
+
+    @haystack = @haystacks.values.map { |v| v[:lines] }.flatten(1)
   end
 
   def search(needle = nil)
@@ -50,6 +57,22 @@ class Searcher
 
       ((shortest_match[0]) * 1.0) + ((shortest_match[1] - shortest_match[0]) * 0.5) + ((line[0].length) * 0.3)
     end
+  end
+
+
+  def self.parse_ctagsx(lines)
+    lines.map! do |l|
+      l =~ /^(.+?) +([\w ]+?) +(\d+?) +([^ ]+?) +(.*?)$/
+      [$1, $2, $3, $4, $5]
+    end
+    regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
+    lines.each do |l|
+      l[0].gsub!("\x00", " ")
+      l[0].replace l[0][0..100]
+      l[3].slice!(regex)
+    end
+    lines.each { |l| l[1] = KINDS_MAP[l[1]] } if MAP_KIND
+    lines
   end
 end
 
@@ -169,19 +192,39 @@ class SearcherField < RubyCurses::Field
   end
 end
 
-
-
-App.new do
-  selected_tag = [""]
-
-  at_exit do
-    STDERR.print "#{selected_tag[3]}\n#{selected_tag[2]}\n#{selected_tag[4]}\n" if selected_tag
+if ENV["TMUX"]
+  module InterruptibleSleep
+    def self.interruptible_sleep(seconds)
+      @_sleep_check, @_sleep_interrupt = IO.pipe
+      IO.select([@_sleep_check], nil, nil, seconds)
+    end
+   
+    def self.interrupt_sleep
+      @_sleep_interrupt.close if @_sleep_interrupt
+    end
   end
 
+  Signal.trap("HUP") do
+    InterruptibleSleep.interrupt_sleep
+  end
+
+  PID_FILE = "/tmp/rtgrep_#{ENV["PATH_HASH"]}_pid" 
+
+  File.open(PID_FILE, "w") do |f|
+    f << Process.pid
+  end
+
+  at_exit do
+    File.delete(PID_FILE)
+  end
+end
+
+App.new do
   @default_prefix = " "
 
-  lines = Searcher.parse_ctagsx(ARGF.readlines.map { |s| s.chomp }.select { |s| s != "" })
-  searcher = Searcher.new(lines)
+  searcher = Searcher.new
+  ARGV.each { |a| searcher.add(a) }
+  searcher.update
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
     results_box = SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
@@ -193,17 +236,42 @@ App.new do
 
     search_box = SearcherField.new(nil, :label => "Search >", :searcher_list => results_box)
     _position(search_box)
+
+    exit_proc = proc do
+      if ENV["TMUX"]
+        system("tmux detach-client")
+
+        InterruptibleSleep.interruptible_sleep 10000
+
+        searcher.update
+        search_box.text = ""
+        search_box.focus
+        search_box.cursor_home
+
+        @form.widgets.each { |w| w.repaint_all }
+        @form.repaint
+      else
+        throw(:close)
+      end
+    end
+
     search_box.bind(:CHANGE) do
       results_box.list(searcher.search(search_box.getvalue))
       results_box.goto_top
     end
     search_box.bind_key(13) do
       selected_tag = results_box.current_value
-      throw(:close)
+
+      if selected_tag
+        io = ENV["TMUX"] ? File.open("/tmp/rtgrep_stay_#{ENV["PATH_HASH"]}", "w") : STDERR
+        io.print "#{selected_tag[3]}\n#{selected_tag[2]}\n#{selected_tag[4]}\n"
+        io.flush
+      end
+
+      exit_proc.call
     end
     search_box.bind_key(2727) do
-      selected_tag = nil
-      throw(:close)
+      exit_proc.call
     end
 
     search_box.focus

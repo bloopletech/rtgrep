@@ -1,0 +1,15 @@
+KINDS_MAP = Hash.new(" " * 8)
+KINDS_MAP["method"] = "METHOD  "
+KINDS_MAP["class method"] = "CLASMTHD"
+KINDS_MAP["class"] = "CLASS   "
+KINDS_MAP["module"] = "MODULE  "
+KINDS_MAP["function"] = "FUNCTION"
+KINDS_MAP["property"] = "PROPERTY"
+KINDS_MAP["variable"] = "VARIABLE"
+KINDS_MAP["attr"] = "ATTRBUTE"
+KINDS_MAP["class call"] = "CLASCALL"
+KINDS_MAP["path"] = "FILEPATH"
+KINDS_MAP["search"] = "SERCHMAT"
+KINDS_MAP["buffer"] = "BUFFER  "
+KINDS_MAP["current buffer"] = "CURRBUFF"
+

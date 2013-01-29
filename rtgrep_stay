@@ -1,0 +1,14 @@
+#!/bin/bash
+
+PATHS=("$@")
+PATH_HASH="${PATHS[${#PATHS[@]}-1]}"
+unset PATHS[${#PATHS[@]}-1]
+
+if tmux has-session -t "$PATH_HASH" >/dev/null 2>/dev/null; then
+  kill -HUP $(cat /tmp/rtgrep_${PATH_HASH}_pid)
+  tmux attach-session -t "$PATH_HASH" >/dev/null
+else
+  CMD="TERM=screen-256color PATH_HASH=\"$PATH_HASH\" RTGREP_MAP_KIND=1 ~/key/rtgrep/rtgrep ${PATHS[@]}"
+  tmux new-session -s "$PATH_HASH" "$CMD" >/dev/null
+fi
+
