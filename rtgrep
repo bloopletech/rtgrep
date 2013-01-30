@@ -26,7 +26,8 @@ class Searcher
 
   def update
     @haystacks.each_pair do |name, value|
-      current_mtime = File.lstat(name).mtime
+#      current_mtime = File.lstat(name).mtime
+      current_mtime = File.mtime(name)
       if value[:lines].nil? || (current_mtime > value[:mtime])
         value[:lines] = Searcher.parse_ctagsx(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
         value[:mtime] = current_mtime
@@ -45,17 +46,46 @@ class Searcher
     end.join
     needle_regex = Regexp.new(needle_parts, "i")
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
-    @haystack.select { |line| line[0] =~ needle_regex }.sort_by do |line|
+    matching_lines = @haystack.select { |line| line[0] =~ needle_regex }
+    longest_line = matching_lines.max_by { |line| line[0].length }
+    puts "longest_line: #{longest_line.inspect}"
+    longest_line_length = longest_line[0].length
+    puts "longest_line_length: #{longest_line_length.inspect}"
+    matching_lines.sort_by do |line|
       shortest_match = nil
       line[0].to_enum(:scan, needle_regex).map do
         match_data = Regexp.last_match
+        puts "match_data: #{match_data.inspect}"
         offset = match_data.offset(0)
         if !shortest_match || ((offset[1] - offset[0]) < (shortest_match[1] - shortest_match[0]))
           shortest_match = offset
         end
       end
+      puts "line[0]: #{line[0]}"
+      puts "shortest_match: #{shortest_match.inspect}, #{shortest_match[1] - shortest_match[0]}"
 
-      ((shortest_match[0]) * 1.0) + ((shortest_match[1] - shortest_match[0]) * 0.5) + ((line[0].length) * 0.3)
+
+      match_length_mod = ((shortest_match[1] - shortest_match[0]) / needle.length).to_f
+      puts "match_length_mod: #{match_length_mod}"
+      puts "mlm2: #{match_length_mod * 1.0}"
+      match_position_mod = ((shortest_match[0] + 1) / line[0].length.to_f)
+      puts "match_position_mod: #{match_position_mod}"
+      puts "mpm2: #{match_position_mod * 0.8}"
+
+      line_length_mod = (line[0].length / longest_line_length.to_f)
+      puts "line_length_mod: #{line_length_mod}"
+      puts "llm2: #{line_length_mod * 0.25}"
+
+      line_position_mod = (matching_lines.index(line) / matching_lines.length.to_f)
+      puts "line_position_mod: #{line_position_mod}"
+      puts "lpm2: #{line_position_mod * 0.125}"
+
+      result = (match_length_mod * 1.0) + (match_position_mod * 0.8) + (line_length_mod * 0.25) + (line_position_mod * 0.125)
+      puts "result: #{result}"
+      result
+
+
+      # +  + ((line[0].length) * 1.0)
     end
   end
 
