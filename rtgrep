@@ -208,7 +208,7 @@ if ENV["TMUX"]
     InterruptibleSleep.interrupt_sleep
   end
 
-  PID_FILE = "/tmp/rtgrep_#{ENV["PATH_HASH"]}_pid" 
+  PID_FILE = "#{ENV["RTGREP_PATH"]}_pid"
 
   File.open(PID_FILE, "w") do |f|
     f << Process.pid
@@ -263,7 +263,7 @@ App.new do
       selected_tag = results_box.current_value
 
       if selected_tag
-        io = ENV["TMUX"] ? File.open("/tmp/rtgrep_stay_#{ENV["PATH_HASH"]}", "w") : STDERR
+        io = ENV["TMUX"] ? File.open("#{ENV["RTGREP_PATH"]}_output", "w") : STDERR
         io.print "#{selected_tag[3]}\n#{selected_tag[2]}\n#{selected_tag[4]}\n"
         io.flush
       end
