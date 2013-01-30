@@ -48,10 +48,9 @@ class Searcher
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
     matching_lines = @haystack.select { |line| line[0] =~ needle_regex }
     longest_line = matching_lines.max_by { |line| line[0].length }
-    puts "longest_line: #{longest_line.inspect}"
     longest_line_length = longest_line[0].length
-    puts "longest_line_length: #{longest_line_length.inspect}"
-    matching_lines.sort_by do |line|
+
+    sort_data = matching_lines.map do |line|
       shortest_match = nil
       line[0].to_enum(:scan, needle_regex).map do
         match_data = Regexp.last_match
@@ -67,25 +66,54 @@ class Searcher
 
       match_length_mod = ((shortest_match[1] - shortest_match[0]) / needle.length).to_f
       puts "match_length_mod: #{match_length_mod}"
-      puts "mlm2: #{match_length_mod * 1.0}"
-      match_position_mod = ((shortest_match[0] + 1) / line[0].length.to_f)
+      match_position_mod = shortest_match[0]
       puts "match_position_mod: #{match_position_mod}"
-      puts "mpm2: #{match_position_mod * 0.8}"
 
-      line_length_mod = (line[0].length / longest_line_length.to_f)
+      line_length_mod = line[0].length
       puts "line_length_mod: #{line_length_mod}"
-      puts "llm2: #{line_length_mod * 0.25}"
 
-      line_position_mod = (matching_lines.index(line) / matching_lines.length.to_f)
-      puts "line_position_mod: #{line_position_mod}"
-      puts "lpm2: #{line_position_mod * 0.125}"
-
-      result = (match_length_mod * 1.0) + (match_position_mod * 0.8) + (line_length_mod * 0.25) + (line_position_mod * 0.125)
-      puts "result: #{result}"
-      result
-
-
-      # +  + ((line[0].length) * 1.0)
+      [line, match_length_mod, match_position_mod, line_length_mod]
+    end
+    sort_data.sort do |a, b|
+      if a[1] < b[1] #Shortest match length/needle length ratio
+        -1
+      elsif a[1] > b[1]
+        1
+      else
+        if a[2] < b[2] #Shortest match position in string
+          -1
+        elsif a[2] > b[2]
+          1
+        else
+#          if a[0][3].length < b[0][3].length
+#            -1
+#          elsif a[0][3].length > b[0][3].length
+#            1
+#          else
+#            if a[0][3] < b[0][3] #Match file path
+#              -1
+#            elsif a[0][3] > b[0][3]
+#              1
+#            else
+#              a[0][2].to_i <=> b[0][2].to_i #Match file line number
+#            end
+#          end
+#          puts "a[0]: #{a[0].inspect}"
+#          puts "a[0][3]: #{a[0][3]}, b[0][3]: #{b[0][3]}"
+          if a[0][3] == b[0][3]
+            puts "doing cmp"
+            a[0][2].to_i <=> b[0][2].to_i
+          elsif a[3] < b[3]
+            -1
+          elsif a[3] > b[3]
+            1
+          else
+            a[0][3] <=> b[0][3]
+          end
+        end
+      end
+    end.map do |sd|
+      sd[0]
     end
   end
 
