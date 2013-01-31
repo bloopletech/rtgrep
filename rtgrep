@@ -17,7 +17,7 @@ class Searcher
 
   def add(file)
     @haystacks[file] = {} unless @haystacks.key?(file)
-    @haystacks[file].merge!(:mtime => File.mtime(file), :lines => nil)
+    @haystacks[file].merge!(:lines => nil)
   end
 
   def delete(file)
@@ -26,11 +26,15 @@ class Searcher
 
   def update
     @haystacks.each_pair do |name, value|
-#      current_mtime = File.lstat(name).mtime
       current_mtime = File.mtime(name)
-      if value[:lines].nil? || (current_mtime > value[:mtime])
+      current_symlink = File.symlink?(name)
+      current_lmtime = current_symlink ? File.lstat(name).mtime : nil
+      if value[:lines].nil? || (current_mtime != value[:mtime]) || (current_lmtime != value[:lmtime]) || (current_symlink != value[:symlink])
         value[:lines] = Searcher.parse_ctagsx(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
+        value[:lines].unshift([name, "rtgrep file marker", "", "", ""]) unless value[:lines].empty?
         value[:mtime] = current_mtime
+        value[:lmtime] = current_lmtime
+        value[:symlink] = current_symlink
       end
     end
 
@@ -46,9 +50,12 @@ class Searcher
     end.join
     needle_regex = Regexp.new(needle_parts, "i")
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
-    matching_lines = @haystack.select { |line| line[0] =~ needle_regex }
+
+    matching_lines = @haystack.reject { |line| line[1] == "rtgrep file marker" }.select { |line| line[0] =~ needle_regex }
+
     longest_line = matching_lines.max_by { |line| line[0].length }
     longest_line_length = longest_line[0].length
+
     matching_lines.sort_by do |line|
       shortest_match = nil
       line[0].to_enum(:scan, needle_regex).map do
@@ -62,7 +69,7 @@ class Searcher
 
       match_length_mod = 1 - (needle.length.to_f / (shortest_match[1] - shortest_match[0]))
       match_line_length_mod = 1 - ((shortest_match[1] - shortest_match[0]) / line[0].length.to_f)
-      match_position_mod = (shortest_match[0] + 1) / line[0].length.to_f
+      match_position_mod = (shortest_match[0] + 1) / longest_line_length.to_f
       line_length_mod = line[0].length / longest_line_length.to_f
 
       (match_length_mod * 20.0) + (match_line_length_mod * 10.0) + (match_position_mod * 10.0) + (line_length_mod * 1.0)
@@ -71,17 +78,16 @@ class Searcher
 
 
   def self.parse_ctagsx(lines)
+    regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
     lines.map! do |l|
       l =~ /^(.+?) +([\w ]+?) +(\d+?) +([^ ]+?) +(.*?)$/
-      [$1, $2, $3, $4, $5]
-    end
-    regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
-    lines.each do |l|
+      l = [$1, $2, $3, $4, $5]
       l[0].gsub!("\x00", " ")
       l[0].replace l[0][0..100]
+      l[1] = KINDS_MAP[l[1]] if MAP_KIND
       l[3].slice!(regex)
+      l
     end
-    lines.each { |l| l[1] = KINDS_MAP[l[1]] } if MAP_KIND
     lines
   end
 end
@@ -228,6 +234,8 @@ if ENV["TMUX"]
     File.delete(PID_FILE)
   end
 end
+
+
 
 App.new do
   @default_prefix = " "
