@@ -9,6 +9,8 @@ $log = Logger.new("/dev/null")
 MAP_KIND = ENV["RTGREP_MAP_KIND"]
 require File.dirname(__FILE__) + "/map_kind.rb" if MAP_KIND
 
+FILE_MARKER = "rtgrep file marker"
+
 class Searcher
   def initialize
     @haystacks = {}
@@ -31,7 +33,7 @@ class Searcher
       current_lmtime = current_symlink ? File.lstat(name).mtime : nil
       if value[:lines].nil? || (current_mtime != value[:mtime]) || (current_lmtime != value[:lmtime]) || (current_symlink != value[:symlink])
         value[:lines] = Searcher.parse_ctagsx(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
-        value[:lines].unshift([name, "rtgrep file marker", "", "", ""]) unless value[:lines].empty?
+        value[:lines].unshift([File.basename(name), FILE_MARKER, "", "", ""]) unless value[:lines].empty?
         value[:mtime] = current_mtime
         value[:lmtime] = current_lmtime
         value[:symlink] = current_symlink
@@ -51,7 +53,7 @@ class Searcher
     needle_regex = Regexp.new(needle_parts, "i")
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
 
-    matching_lines = @haystack.reject { |line| line[1] == "rtgrep file marker" }.select { |line| line[0] =~ needle_regex }
+    matching_lines = @haystack.reject { |line| line[1] == FILE_MARKER }.select { |line| line[0] =~ needle_regex }
 
     longest_line = matching_lines.max_by { |line| line[0].length }
     longest_line_length = longest_line[0].length
@@ -161,6 +163,26 @@ class SearcherList < RubyCurses::List
       super
     end
   end
+
+  def on_enter_row arow
+    super
+    if current_value[1] == FILE_MARKER
+      if @current_index > @oldrow
+        if next_row == :NO_NEXT_ROW
+          previous_row
+        end
+      elsif @current_index < @oldrow
+        if previous_row == :NO_PREVIOUS_ROW
+          next_row
+        end
+      end
+    end
+  end
+
+  def goto_top
+    @current_index = -1
+    super
+  end
 end
 
 class SearcherListCellRenderer < RubyCurses::ListCellRenderer
@@ -173,20 +195,30 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
       attr_offset = Ncurses::A_NORMAL
     end
 
-    chunks = [Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD), Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)]
-    chunks.reverse! if MAP_KIND
+    chunk_line = nil
 
-    if value[0] != value[3]
-      chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
-      if value[2] != "1"
-        chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
+    if value[1] == FILE_MARKER
+      marker_prefix = MAP_KIND ? KINDS_MAP.default.gsub(/./, "#") + " " : ""
+      marker = "#{marker_prefix}#{value[0].gsub("_", " ").upcase} "
+      marker += "#" * (@display_length - marker.length)
+      marker = marker[0..(@display_length)]
+      chunk_line = Chunks::ChunkLine.new([Chunks::Chunk.new(ColorMap.get_color(252, offset), marker, Ncurses::A_BOLD)])
+    else
+      chunks = [Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD), Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)]
+      chunks.reverse! if MAP_KIND
+
+      if value[0] != value[3]
+        chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
+        if value[2] != "1"
+          chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[2], attr_offset)
+        end
       end
-    end
 
-    blank = Chunks::Chunk.new(ColorMap.get_color(252, offset), ' ', attr_offset)
-    chunk_line = Chunks::ChunkLine.new(chunks.flat_map { |c| [c, blank] }[0...-1])
-    fill_length = (@display_length - chunk_line.length) 
-    chunk_line << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * fill_length, attr_offset) if fill_length > 0
+      blank = Chunks::Chunk.new(ColorMap.get_color(252, offset), ' ', attr_offset)
+      chunk_line = Chunks::ChunkLine.new(chunks.flat_map { |c| [c, blank] }[0...-1])
+      fill_length = (@display_length - chunk_line.length)
+      chunk_line << Chunks::Chunk.new(ColorMap.get_color(252, offset), " " * fill_length, attr_offset) if fill_length > 0
+    end
 
     graphic.wmove r, c
     graphic.show_colored_chunks chunk_line, ColorMap.get_color(238), nil
@@ -208,7 +240,7 @@ class SearcherField < RubyCurses::Field
   end
 end
 
-if ENV["TMUX"]
+if ENV["RTGREP_PATH"]
   module InterruptibleSleep
     def self.interruptible_sleep(seconds)
       @_sleep_check, @_sleep_interrupt = IO.pipe
@@ -247,7 +279,7 @@ App.new do
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
     results_box = SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
-    results_box.instance_variable_set("@display_length", 9001)
+    results_box.instance_variable_set("@display_length", FFI::NCurses.COLS)
     results_box.cell_renderer(SearcherListCellRenderer.new(:display_length => results_box.width))
 
     label :text => " ", :width => :expand, :height => 1
@@ -256,8 +288,8 @@ App.new do
     _position(search_box)
 
     exit_proc = proc do
-      if ENV["TMUX"]
-        system("tmux detach-client")
+      if ENV["RTGREP_PATH"]
+        system("RTGREP_PATH detach-client")
 
         InterruptibleSleep.interruptible_sleep 10000
 
@@ -281,7 +313,7 @@ App.new do
       selected_tag = results_box.current_value
 
       if selected_tag
-        io = ENV["TMUX"] ? File.open("#{ENV["RTGREP_PATH"]}_output", "w") : STDERR
+        io = ENV["RTGREP_PATH"] ? File.open("#{ENV["RTGREP_PATH"]}_output", "w") : STDERR
         io.print "#{selected_tag[3]}\n#{selected_tag[2]}\n#{selected_tag[4]}\n"
         io.flush
       end
@@ -294,5 +326,6 @@ App.new do
 
     search_box.focus
     search_box.cursor_home
+    results_box.goto_top
   end
 end
