@@ -1,6 +1,16 @@
 #!/usr/bin/env ruby
 
+
 require 'rbcurse/core/util/app'
+if Rbcurse::VERSION != "0.0.3"
+  puts <<-EOF
+This script is written against rbcurse-core version 0.0.3;
+there are brittle dependencies against the particular version of rbcurse-core
+(mainly because of apparent bugs in rb-curse core).
+Please run this script against the correct version of rbcurse-core (0.0.3).
+EOF
+  exit
+end
 
 $datacolor = $normalcolor = $def_fg_color = 238
 $def_bg_color = 16
@@ -200,7 +210,7 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
     if value[1] == FILE_MARKER
       marker_prefix = MAP_KIND ? KINDS_MAP.default.gsub(/./, "#") + " " : ""
       marker = "#{marker_prefix}#{value[0].gsub("_", " ").upcase} "
-      marker += "#" * (@display_length - marker.length)
+      marker += "#" * [@display_length - marker.length, 0].max
       marker = marker[0..(@display_length)]
       chunk_line = Chunks::ChunkLine.new([Chunks::Chunk.new(ColorMap.get_color(252, offset), marker, Ncurses::A_BOLD)])
     else
@@ -280,6 +290,7 @@ App.new do
     results_box = SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
     results_box.instance_variable_set("@display_length", FFI::NCurses.COLS)
+    results_box.instance_variable_set("@internal_width", 0)
     results_box.cell_renderer(SearcherListCellRenderer.new(:display_length => results_box.width))
 
     label :text => " ", :width => :expand, :height => 1
@@ -289,7 +300,7 @@ App.new do
 
     exit_proc = proc do
       if ENV["RTGREP_PATH"]
-        system("RTGREP_PATH detach-client")
+        system("tmux detach-client")
 
         InterruptibleSleep.interruptible_sleep 10000
 
@@ -305,9 +316,18 @@ App.new do
       end
     end
 
-    search_box.bind(:CHANGE) do
+    search_box.bind(:CHANGE) do |event|
       results_box.list(searcher.search(search_box.getvalue))
       results_box.goto_top
+      search_box.focus
+      search_box.addcol(case event.type
+      when :INSERT
+        -1
+      when :DELETE
+        1
+      else
+        nil
+      end)
     end
     search_box.bind_key(13) do
       selected_tag = results_box.current_value
@@ -324,8 +344,8 @@ App.new do
       exit_proc.call
     end
 
+    results_box.goto_top
     search_box.focus
     search_box.cursor_home
-    results_box.goto_top
   end
 end
