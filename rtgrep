@@ -15,6 +15,7 @@ end
 $datacolor = $normalcolor = $def_fg_color = 238
 $def_bg_color = 16
 $log = Logger.new("/dev/null")
+#$tlg = Logger.new("/home/bloopletech/tlg.log")
 
 MAP_KIND = ENV["RTGREP_MAP_KIND"]
 require File.dirname(__FILE__) + "/map_kind.rb" if MAP_KIND
@@ -24,7 +25,7 @@ FILE_MARKER = "rtgrep file marker"
 class Searcher
   def initialize
     @haystacks = {}
-    @haystack = []
+    @haystack = nil
   end
 
   def add(file)
@@ -51,9 +52,16 @@ class Searcher
     end
 
     @haystack = @haystacks.values.map { |v| v[:lines] }.flatten(1)
+
+    @longest_line_length = (@haystack.max_by { |line| line[0].length }).first.length
+    @longest_filename_length = (@haystack.max_by { |line| line[3].length }).first.length
+
+    @last_matches = []
+    @last_needle = nil
   end
 
   def search(needle = nil)
+    raise "You must call Searcher#update before calling Searcher#search, and you must have at least one file added to the searcher using Searcher#add." unless @haystack
     return @haystack if !needle || needle.gsub(' ', '') == ''
 
     needle_parts = needle.split("").map do |c|
@@ -63,10 +71,16 @@ class Searcher
     needle_regex = Regexp.new(needle_parts, "i")
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
 
-    matching_lines = @haystack.reject { |line| line[1] == FILE_MARKER }.select { |line| line[0] =~ needle_regex }
+    matching_lines = if @last_needle && needle.start_with?(@last_needle)
+      #$tlg.error "Using last matches cache, last_needle: #{@last_needle.inspect}, needle: #{needle.inspect}, search space reduced from #{@haystack.length} to #{@last_matches.length}"
+      @last_matches
+    else
+      #$tlg.error "SKIPPING last matches cache, last_needle: #{@last_needle.inspect}, needle: #{needle.inspect}, search space widened from #{@last_matches.length} to #{@haystack.length}"
+      @haystack.reject { |line| line[1] == FILE_MARKER } 
+    end
 
-    longest_line = matching_lines.max_by { |line| line[0].length }
-    longest_line_length = longest_line[0].length
+    @last_needle = needle.dup
+    @last_matches = matching_lines = matching_lines.select { |line| line[0] =~ needle_regex }
 
     matching_lines.sort_by do |line|
       shortest_match = nil
@@ -80,11 +94,14 @@ class Searcher
 
 
       match_length_mod = 1 - (needle.length.to_f / (shortest_match[1] - shortest_match[0]))
+      file_length_mod = line[3].length / @longest_filename_length.to_f
       match_line_length_mod = 1 - ((shortest_match[1] - shortest_match[0]) / line[0].length.to_f)
-      match_position_mod = (shortest_match[0] + 1) / longest_line_length.to_f
-      line_length_mod = line[0].length / longest_line_length.to_f
+      match_position_mod = (shortest_match[0] + 1) / @longest_line_length.to_f
+      line_length_mod = line[0].length / @longest_line_length.to_f
 
-      (match_length_mod * 20.0) + (match_line_length_mod * 10.0) + (match_position_mod * 10.0) + (line_length_mod * 1.0)
+#      value[0] = "#{value[0]} #{match_length_mod.round(2)}
+
+      (match_length_mod * 20.0) + (match_position_mod * 10.0) + (match_line_length_mod * 10.0) + (file_length_mod * 2.0) + (line_length_mod * 2.0)
     end
   end
 
@@ -329,6 +346,7 @@ App.new do
         nil
       end)
     end
+
     search_box.bind_key(13) do
       selected_tag = results_box.current_value
 
@@ -340,8 +358,18 @@ App.new do
 
       exit_proc.call
     end
+
     search_box.bind_key(2727) do
       exit_proc.call
+    end
+
+    if ENV["RTGREP_TAGGER"]
+      search_box.bind_key(FFI::NCurses::KEY_F5) do
+        system("#{ENV["RTGREP_TAGGER"]} >/dev/null")
+        searcher.update
+        results_box.list(searcher.search(search_box.getvalue))
+        search_box.fire_handler :CHANGE, InputDataEvent.new(nil, nil, nil, nil, nil, nil)
+      end
     end
 
     results_box.goto_top

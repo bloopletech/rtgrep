@@ -1,11 +1,7 @@
 #!/bin/bash
 
-PATHS=("$@")
-RTGREP_PATH="${PATHS[${#PATHS[@]}-1]}"
-unset PATHS[${#PATHS[@]}-1]
-
 if tmux has-session -t "$RTGREP_PATH" >/dev/null 2>/dev/null; then
-  if [[ "${PATHS[0]}" == "--kill" ]]; then
+  if [[ "$1" == "--kill" ]]; then
     kill $(cat "${RTGREP_PATH}_pid")
     tmux kill-session -t "$RTGREP_PATH" >/dev/null
     exit
@@ -13,7 +9,16 @@ if tmux has-session -t "$RTGREP_PATH" >/dev/null 2>/dev/null; then
   kill -HUP $(cat "${RTGREP_PATH}_pid")
   tmux attach-session -t "$RTGREP_PATH" >/dev/null
 else
-  CMD="TERM=screen-256color RTGREP_PATH=\"$RTGREP_PATH\" RTGREP_MAP_KIND=1 ~/key/rtgrep/rtgrep ${PATHS[@]}"
+  CMD="TERM=screen-256color RTGREP_MAP_KIND=1 ~/key/rtgrep/rtgrep $@"
+  if [[ "$RTGREP_TAGGER" != "" ]]; then
+    CMD="RTGREP_TAGGER=\"$RTGREP_TAGGER\" $CMD"
+  fi
+  if [[ "$RTGREP_PATH" != "" ]]; then
+    CMD="RTGREP_PATH=\"$RTGREP_PATH\" $CMD"
+  fi
+  if [[ "$RTGREP_MAP_KIND" != "" ]]; then
+    CMD="RTGREP_MAP_KIND=\"$RTGREP_MAP_KIND\" $CMD"
+  fi
   tmux new-session -s "$RTGREP_PATH" "$CMD" >/dev/null
 fi
 
