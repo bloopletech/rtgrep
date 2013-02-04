@@ -9,7 +9,7 @@ if tmux has-session -t "$RTGREP_PATH" >/dev/null 2>/dev/null; then
   kill -HUP $(cat "${RTGREP_PATH}_pid")
   tmux attach-session -t "$RTGREP_PATH" >/dev/null
 else
-  CMD="TERM=screen-256color RTGREP_MAP_KIND=1 ~/key/rtgrep/rtgrep $@"
+  CMD="TERM=screen-256color RTGREP_MAP_KIND=1 rtgrep $@"
   if [[ "$RTGREP_TAGGER" != "" ]]; then
     CMD="RTGREP_TAGGER=\"$RTGREP_TAGGER\" $CMD"
   fi
