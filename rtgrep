@@ -1,6 +1,5 @@
 #!/usr/bin/env ruby
 
-
 require 'rbcurse/core/util/app'
 if Rbcurse::VERSION != "0.0.3"
   puts <<-EOF
@@ -13,7 +12,22 @@ EOF
 end
 
 $datacolor = $normalcolor = $def_fg_color = 238
-$def_bg_color = 16
+$actual_bg_color = 16
+$def_bg_color = $actual_bg_color + 0
+
+module ColorMap
+  class << self
+    alias_method :original_get_color_const, :get_color_const
+  end
+  def ColorMap.get_color_const colorstring
+    if [:black, "black", 0, nil].include?(colorstring)
+      return $actual_bg_color
+    else
+      original_get_color_const(colorstring)
+    end
+  end
+end
+
 $log = Logger.new("/dev/null")
 #$tlg = Logger.new("/home/bloopletech/tlg.log")
 
@@ -303,7 +317,7 @@ App.new do
   ARGV.each { |a| searcher.add(a) }
   searcher.update
 
-  stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $def_bg_color do
+  stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $actual_bg_color do
     results_box = SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
     results_box.instance_variable_set("@display_length", FFI::NCurses.COLS)
@@ -314,6 +328,9 @@ App.new do
 
     search_box = SearcherField.new(nil, :label => "Search >", :searcher_list => results_box)
     _position(search_box)
+    field_width = FFI::NCurses.COLS - search_box.label.length - 2
+    search_box.instance_variable_set("@display_length", field_width)
+    search_box.instance_variable_set("@maxlen", field_width)
 
     exit_proc = proc do
       if ENV["RTGREP_PATH"]
@@ -372,6 +389,7 @@ App.new do
       end
     end
 
+    @window.printstring(FFI::NCurses.LINES - 1, search_box.label.length, "  ", $actual_bg_color)
     results_box.goto_top
     search_box.focus
     search_box.cursor_home
