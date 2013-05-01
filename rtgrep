@@ -80,7 +80,7 @@ class Searcher
 
     needle_parts = needle.split("").map do |c|
       c = Regexp.escape(c)
-      "#{c}[^#{c}]*?"
+      "#{c}([^#{c}]*?)"
     end.join
     needle_regex = Regexp.new(needle_parts, "i")
     #needle_regex = Regexp.new(needle.split("").map { |c| "#{c}?[^#{c}]*?" }.join, "i")
@@ -97,25 +97,31 @@ class Searcher
     @last_matches = matching_lines = matching_lines.select { |line| line[0] =~ needle_regex }
 
     matching_lines.sort_by do |line|
-      shortest_match = nil
+      shortest_match_offset = nil
+      shortest_match_inbetweens = nil
       line[0].to_enum(:scan, needle_regex).map do
         match_data = Regexp.last_match
+
         offset = match_data.offset(0)
-        if !shortest_match || ((offset[1] - offset[0]) < (shortest_match[1] - shortest_match[0]))
-          shortest_match = offset
+        if !shortest_match_offset || ((offset[1] - offset[0]) < (shortest_match_offset[1] - shortest_match_offset[0]))
+          shortest_match_offset = offset
+          shortest_match_inbetweens = match_data.captures.inject(0) { |sum, c| sum + c.length }
         end
       end
 
 
-      match_length_mod = 1 - (needle.length.to_f / (shortest_match[1] - shortest_match[0]))
+      match_length_mod = 1 - (needle.length.to_f / (shortest_match_offset[1] - shortest_match_offset[0]))
+      match_inbetweens_length_mod = shortest_match_inbetweens / line[0].length.to_f
+      match_position_mod = (shortest_match_offset[0] + 1) / line[0].length.to_f
       file_length_mod = line[3].length / @longest_filename_length.to_f
-      match_line_length_mod = 1 - ((shortest_match[1] - shortest_match[0]) / line[0].length.to_f)
-      match_position_mod = (shortest_match[0] + 1) / @longest_line_length.to_f
+      match_line_length_mod = 1 - ((shortest_match_offset[1] - shortest_match_offset[0]) / line[0].length.to_f)
       line_length_mod = line[0].length / @longest_line_length.to_f
 
-#      value[0] = "#{value[0]} #{match_length_mod.round(2)}
+      score = (match_length_mod * 10.0) + (match_inbetweens_length_mod * 10.0) + (match_position_mod * 10.0) + (match_line_length_mod * 10.0) + (file_length_mod * 2.0) + (line_length_mod * 2.0)
 
-      (match_length_mod * 20.0) + (match_position_mod * 10.0) + (match_line_length_mod * 10.0) + (file_length_mod * 2.0) + (line_length_mod * 2.0)
+#      $tlg.debug "\n\n\n\nNeedle: #{needle.inspect}\nLine:\n#{line.inspect}\nShortest match offset: #{shortest_match_offset.inspect}\nShortest match inbetweens: #{shortest_match_inbetweens.inspect}\nmatch_length_mod: #{match_length_mod}, match_inbetweens_length_mod: #{match_inbetweens_length_mod}, file_length_mod: #{file_length_mod}, match_line_length_mod: #{match_line_length_mod}, match_position_mod: #{match_position_mod}, line_length_mod: #{line_length_mod}\nResult: #{result}"
+
+       score
     end
   end
 
