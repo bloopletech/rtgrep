@@ -128,6 +128,7 @@ class Searcher
       l[0].gsub!("\x00", " ")
       l[0].replace l[0][0..100]
       l[1] = KINDS_MAP[l[1]] if MAP_KIND
+      l[3].gsub!("\x00", " ")
       l[3].slice!(regex)
       l
     end
