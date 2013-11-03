@@ -31,9 +31,6 @@ end
 $log = Logger.new("/dev/null")
 #$tlg = Logger.new("/home/bloopletech/tlg.log")
 
-MAP_KIND = ENV["RTGREP_MAP_KIND"]
-require File.dirname(__FILE__) + "/map_kind.rb" if MAP_KIND
-
 FILE_MARKER = "rtgrep file marker"
 
 class Searcher
@@ -57,7 +54,7 @@ class Searcher
       current_symlink = File.symlink?(name)
       current_lmtime = current_symlink ? File.lstat(name).mtime : nil
       if value[:lines].nil? || (current_mtime != value[:mtime]) || (current_lmtime != value[:lmtime]) || (current_symlink != value[:symlink])
-        value[:lines] = Searcher.parse_ctagsx(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
+        value[:lines] = Searcher.parse_vimtags(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
         value[:lines].unshift([File.basename(name), FILE_MARKER, "", "", ""]) unless value[:lines].empty?
         value[:mtime] = current_mtime
         value[:lmtime] = current_lmtime
@@ -109,7 +106,6 @@ class Searcher
         end
       end
 
-
       match_line_length_mod = 1 - ((shortest_match_offset[1] - shortest_match_offset[0]) / line[0].length.to_f)
       match_inbetweens_length_mod = shortest_match_inbetweens / line[0].length.to_f
       match_position_mod = (shortest_match_offset[0] + 1) / line[0].length.to_f
@@ -125,17 +121,26 @@ class Searcher
   end
 
 
-  def self.parse_ctagsx(lines)
+  def self.parse_vimtags(lines)
     regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
+    lines.reject! { |l| l =~ /^\!_TAG_/ }
     lines.map! do |l|
-      l =~ /^(.+?) +([\w ]+?) +(\d+?) +([^ ]+?) +(.*?)$/
-      l = [$1, $2, $3, $4, $5]
-      l[0].gsub!("\x00", " ")
-      l[0].replace l[0][0..100]
-      l[1] = KINDS_MAP[l[1]] if MAP_KIND
-      l[3].gsub!("\x00", " ")
-      l[3].slice!(regex)
-      l
+      begin
+        l =~ /^(.+?)\t(.+?)\t(.+?)(;"(.+)|)$/
+        l = [$1, $5, $3, $2, ""] #0 = tag, 1 = type, 2 = line num, 3 = path, 4 = line context
+
+        extra = l[1]
+        if extra
+          extra =~ /^\t(.)/
+          type = $1
+          l[1] = type
+        end
+
+        l[0].replace l[0][0..100]
+        l[3].slice!(regex)
+        l
+      rescue
+      end
     end
     lines
   end
@@ -245,14 +250,12 @@ class SearcherListCellRenderer < RubyCurses::ListCellRenderer
     chunk_line = nil
 
     if value[1] == FILE_MARKER
-      marker_prefix = MAP_KIND ? KINDS_MAP.default.gsub(/./, "#") + " " : ""
-      marker = "#{marker_prefix}#{value[0].gsub("_", " ").upcase} "
+      marker = "# #{value[0].gsub("_", " ").upcase} "
       marker += "#" * [@display_length - marker.length, 0].max
       marker = marker[0..(@display_length)]
       chunk_line = Chunks::ChunkLine.new([Chunks::Chunk.new(ColorMap.get_color(252, offset), marker, Ncurses::A_BOLD)])
     else
-      chunks = [Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD), Chunks::Chunk.new(ColorMap.get_color(252, offset), value[1], attr_offset)]
-      chunks.reverse! if MAP_KIND
+      chunks = [Chunks::Chunk.new(ColorMap.get_color(11, offset), value[1], attr_offset), Chunks::Chunk.new(ColorMap.get_color(252, offset), value[0], Ncurses::A_BOLD)]
 
       if value[0] != value[3]
         chunks << Chunks::Chunk.new(ColorMap.get_color(245, offset), value[3], attr_offset)
