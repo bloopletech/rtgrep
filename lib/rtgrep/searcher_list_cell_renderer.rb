@@ -10,8 +10,8 @@ class Rtgrep::SearcherListCellRenderer < RubyCurses::ListCellRenderer
 
     chunk_line = nil
 
-    if value[1] == FILE_MARKER
-      marker = "## #{value[0].gsub("_", " ").upcase} "
+    if value[1] == Rtgrep::FILE_MARKER
+      marker = "## #{value[0].upcase} "
       marker += "#" * [@display_length - marker.length, 0].max
       marker = marker[0..(@display_length)]
       chunk_line = Chunks::ChunkLine.new([Chunks::Chunk.new(ColorMap.get_color(252, offset), marker, Ncurses::A_BOLD)])

@@ -26,7 +26,9 @@ App.new do
   @default_prefix = " "
 
   searcher = Rtgrep::Searcher.new
-  ARGV.each { |a| searcher.add(a) }
+  ARGV.each do |a|
+    searcher.lines += Rtgrep::TagsFile.new(File.readlines(a), Dir.getwd()).lines
+  end
   searcher.update
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $actual_bg_color do

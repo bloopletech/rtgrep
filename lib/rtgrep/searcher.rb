@@ -1,37 +1,25 @@
-FILE_MARKER = "rtgrep file marker"
-
 class Rtgrep::Searcher
+  attr_accessor :lines
   def initialize
-    @haystacks = {}
-    @haystack = nil
-  end
-
-  def add(file)
-    @haystacks[file] = {} unless @haystacks.key?(file)
-    @haystacks[file].merge!(:lines => nil)
-  end
-
-  def delete(file)
-    @haystacks.delete(file)
+    @lines = []
+    update
   end
 
   def update
-    @haystacks.each_pair do |name, value|
-      value[:lines] = Rtgrep::Searcher.parse_vimtags(name)
+    if lines.empty?
+      @longest_line_length = 0
+      @longest_filename_length = 0
+    else
+      @longest_line_length = (@lines.max_by { |line| line[0].length }).first.length
+      @longest_filename_length = (@lines.max_by { |line| line[3].length }).first.length
     end
-
-    @haystack = @haystacks.values.map { |v| v[:lines] }.flatten(1)
-
-    @longest_line_length = (@haystack.max_by { |line| line[0].length }).first.length
-    @longest_filename_length = (@haystack.max_by { |line| line[3].length }).first.length
 
     @last_matches = []
     @last_needle = nil
   end
 
   def search(needle = nil)
-    raise "You must call Searcher#update before calling Searcher#search, and you must have at least one file added to the searcher using Searcher#add." unless @haystack
-    return @haystack if !needle || needle.gsub(' ', '') == ''
+    return @lines if @lines.empty? || !needle || needle.gsub(' ', '') == ''
 
     needle_parts = needle.split("").map do |c|
       c = Regexp.escape(c)
@@ -45,7 +33,7 @@ class Rtgrep::Searcher
       @last_matches
     else
       #$tlg.error "SKIPPING last matches cache, last_needle: #{@last_needle.inspect}, needle: #{needle.inspect}, search space widened from #{@last_matches.length} to #{@haystack.length}"
-      @haystack.reject { |line| line[1] == FILE_MARKER } 
+      @lines.reject { |line| line[1] == Rtgrep::FILE_MARKER } 
     end
 
     @last_needle = needle.dup
@@ -76,12 +64,6 @@ class Rtgrep::Searcher
 
        score
     end
-  end
-
-  def self.parse_vimtags(name)
-    tf = Rtgrep::TagsFile.new(File.readlines(name), Dir.getwd())
-    tf.tags.unshift([File.basename(name), FILE_MARKER, "", "", ""]) unless tf.tags.empty?
-    tf.tags
   end
 end
 

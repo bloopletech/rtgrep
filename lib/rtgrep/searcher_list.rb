@@ -70,7 +70,7 @@ class Rtgrep::SearcherList < RubyCurses::List
 
   def on_enter_row arow
     super
-    if current_value[1] == FILE_MARKER
+    if current_value[1] == Rtgrep::FILE_MARKER
       if @current_index > @oldrow
         if next_row == :NO_NEXT_ROW
           previous_row

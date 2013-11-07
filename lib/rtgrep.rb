@@ -1,6 +1,7 @@
 require "rbcurse/core/util/app"
 
 module Rtgrep
+  FILE_MARKER = "rtgrep file marker"
 end
 
 require "rtgrep/tags_file"

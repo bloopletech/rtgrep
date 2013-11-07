@@ -1,7 +1,9 @@
 class Rtgrep::TagsFile
-  attr_reader :tags, :name
+  attr_reader :lines
   def initialize(lines, dir = nil)
-    @tags = []
+    @lines = []
+
+    collection_name = false
 
     regex = /^#{Regexp.quote(dir + File::SEPARATOR)}/ if dir
 
@@ -10,8 +12,9 @@ class Rtgrep::TagsFile
 
       next if l == ""
 
-      if @name.nil? && l =~ /^\!_TAG_COLLECTION_NAME\t(.+)$/
-        @name = $1
+      if !collection_name && l =~ /^\!_TAG_COLLECTION_NAME\t(.+)$/
+        collection_name = true
+        @lines << [$1, Rtgrep::FILE_MARKER, "", "", ""]
         next
       end
 
@@ -31,7 +34,7 @@ class Rtgrep::TagsFile
         l[0].replace l[0][0..100]
         l[3].slice!(regex) if dir
 
-        @tags << l
+        @lines << l
       rescue
       end
     end
