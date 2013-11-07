@@ -1,4 +1,4 @@
-class SearcherList < RubyCurses::List
+class Rtgrep::SearcherList < RubyCurses::List
   def convert_value_to_text(value, crow)
     value
   end

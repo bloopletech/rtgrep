@@ -1,4 +1,4 @@
-class SearcherField < RubyCurses::Field
+class Rtgrep::SearcherField < RubyCurses::Field
   def searcher_list(list)
     @searcher_list = list
   end

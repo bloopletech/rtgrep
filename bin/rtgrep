@@ -1,7 +1,6 @@
 #!/usr/bin/env ruby
 
-require 'rbcurse/core/util/app'
-require 'rtgrep'
+require "rtgrep"
 
 $datacolor = $normalcolor = $def_fg_color = 238
 $actual_bg_color = 16
@@ -26,20 +25,20 @@ $log = Logger.new("/dev/null")
 App.new do
   @default_prefix = " "
 
-  searcher = Searcher.new
+  searcher = Rtgrep::Searcher.new
   ARGV.each { |a| searcher.add(a) }
   searcher.update
 
   stack :margin_top => 0, :width => :expand, :height => FFI::NCurses.LINES, :color => $normalcolor, :bgcolor => $actual_bg_color do
-    results_box = SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
+    results_box = Rtgrep::SearcherList.new(nil, :list => searcher.search, :width => :expand, :height => FFI::NCurses.LINES - 2, :selection_mode => :single, :suppress_borders => true)
     _position(results_box)
     results_box.instance_variable_set("@display_length", FFI::NCurses.COLS)
     results_box.instance_variable_set("@internal_width", 0)
-    results_box.cell_renderer(SearcherListCellRenderer.new(:display_length => results_box.width))
+    results_box.cell_renderer(Rtgrep::SearcherListCellRenderer.new(:display_length => results_box.width))
 
     label :text => " ", :width => :expand, :height => 1
 
-    search_box = SearcherField.new(nil, :label => "Search >", :searcher_list => results_box)
+    search_box = Rtgrep::SearcherField.new(nil, :label => "Search >", :searcher_list => results_box)
     _position(search_box)
     field_width = FFI::NCurses.COLS - search_box.label.length - 2
     search_box.instance_variable_set("@display_length", field_width)

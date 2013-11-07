@@ -1,6 +1,6 @@
 FILE_MARKER = "rtgrep file marker"
 
-class Searcher
+class Rtgrep::Searcher
   def initialize
     @haystacks = {}
     @haystack = nil
@@ -21,7 +21,7 @@ class Searcher
       current_symlink = File.symlink?(name)
       current_lmtime = current_symlink ? File.lstat(name).mtime : nil
       if value[:lines].nil? || (current_mtime != value[:mtime]) || (current_lmtime != value[:lmtime]) || (current_symlink != value[:symlink])
-        value[:lines] = Searcher.parse_vimtags(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
+        value[:lines] = Rtgrep::Searcher.parse_vimtags(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
         value[:lines].unshift([File.basename(name), FILE_MARKER, "", "", ""]) unless value[:lines].empty?
         value[:mtime] = current_mtime
         value[:lmtime] = current_lmtime

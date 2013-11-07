@@ -1,3 +1,5 @@
+require "rbcurse/core/util/app"
+
 module Rtgrep
 end
 

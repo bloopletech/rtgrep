@@ -1,4 +1,4 @@
-class SearcherListCellRenderer < RubyCurses::ListCellRenderer
+class Rtgrep::SearcherListCellRenderer < RubyCurses::ListCellRenderer
   def repaint graphic, r=@row,c=@col, row_index=-1,value=@text, focussed=false, selected=false
     if focussed
       offset = 236
