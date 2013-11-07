@@ -17,16 +17,7 @@ class Rtgrep::Searcher
 
   def update
     @haystacks.each_pair do |name, value|
-      current_mtime = File.mtime(name)
-      current_symlink = File.symlink?(name)
-      current_lmtime = current_symlink ? File.lstat(name).mtime : nil
-      if value[:lines].nil? || (current_mtime != value[:mtime]) || (current_lmtime != value[:lmtime]) || (current_symlink != value[:symlink])
-        value[:lines] = Rtgrep::Searcher.parse_vimtags(File.readlines(name).map { |s| s.chomp }.select { |s| s != "" })
-        value[:lines].unshift([File.basename(name), FILE_MARKER, "", "", ""]) unless value[:lines].empty?
-        value[:mtime] = current_mtime
-        value[:lmtime] = current_lmtime
-        value[:symlink] = current_symlink
-      end
+      value[:lines] = Rtgrep::Searcher.parse_vimtags(name)
     end
 
     @haystack = @haystacks.values.map { |v| v[:lines] }.flatten(1)
@@ -87,29 +78,10 @@ class Rtgrep::Searcher
     end
   end
 
-
-  def self.parse_vimtags(lines)
-    regex = /^#{Regexp.quote(Dir.getwd() + File::SEPARATOR)}/
-    lines.reject! { |l| l =~ /^\!_TAG_/ }
-    lines.map! do |l|
-      begin
-        l =~ /^(.+?)\t(.+?)\t(.+?)(;"(.+)|)$/
-        l = [$1, $5, $3, $2, ""] #0 = tag, 1 = type, 2 = line num, 3 = path, 4 = line context
-
-        extra = l[1]
-        if extra
-          extra =~ /^\t(.)/
-          type = $1
-          l[1] = type
-        end
-
-        l[0].replace l[0][0..100]
-        l[3].slice!(regex)
-        l
-      rescue
-      end
-    end
-    lines
+  def self.parse_vimtags(name)
+    tf = Rtgrep::TagsFile.new(File.readlines(name), Dir.getwd())
+    tf.tags.unshift([File.basename(name), FILE_MARKER, "", "", ""]) unless tf.tags.empty?
+    tf.tags
   end
 end
 
